@@ -1,47 +1,3 @@
-''' import os
-
-# Directory paths
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-REPORTS_DIR = os.path.join(DATA_DIR, "reports")
-USERS_FILE = os.path.join(DATA_DIR, "users.json")
-
-# Create directories if they don't exist
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(REPORTS_DIR, exist_ok=True)
-
-# Normal ranges for medical parameters
-NORMAL_RANGES = {
-    "Hemoglobin": {"min": 12.0, "max": 17.0, "unit": "g/dL"},
-    "RBC": {"min": 4.0, "max": 6.0, "unit": "million/µL"},
-    "WBC": {"min": 4000, "max": 11000, "unit": "/µL"},
-    "Platelets": {"min": 150000, "max": 400000, "unit": "/µL"},
-    "Glucose": {"min": 70, "max": 100, "unit": "mg/dL"},
-    "Cholesterol": {"min": 0, "max": 200, "unit": "mg/dL"},
-    "Blood Pressure Systolic": {"min": 90, "max": 120, "unit": "mmHg"},
-    "Blood Pressure Diastolic": {"min": 60, "max": 80, "unit": "mmHg"},
-    "Heart Rate": {"min": 60, "max": 100, "unit": "bpm"},
-    "Temperature": {"min": 97.0, "max": 99.0, "unit": "°F"},
-}
-
-# Excel columns
-EXCEL_COLUMNS = [
-    "Date",
-    "Report Type",
-    "Hemoglobin",
-    "RBC",
-    "WBC",
-    "Platelets",
-    "Glucose",
-    "Cholesterol",
-    "Blood Pressure Systolic",
-    "Blood Pressure Diastolic",
-    "Heart Rate",
-    "Temperature",
-    "Notes"
-] '''
-
-
 import os
 
 # Directory paths
@@ -49,6 +5,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 REPORTS_DIR = os.path.join(DATA_DIR, "reports")
 USERS_FILE = os.path.join(DATA_DIR, "users.json")
+FAMILY_PROFILES_FILE = os.path.join(DATA_DIR, "family_profiles.json")
 
 # Create directories if they don't exist
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -99,6 +56,15 @@ NORMAL_RANGES = {
     "Monocytes": {"min": 2, "max": 8, "unit": "%"},
     "Eosinophils": {"min": 1, "max": 6, "unit": "%"},
     "Gamma Glutamyl Transferase": {"min": 8, "max": 61, "unit": "U/L"},
+    
+    # Ultrasound Parameters
+    "Liver Size": {"min": 0, "max": 0, "unit": "mm"},
+    "Gall Bladder Status": {"min": 0, "max": 0, "unit": ""},
+    "Spleen Size": {"min": 0, "max": 0, "unit": "mm"},
+    "Pancreas Status": {"min": 0, "max": 0, "unit": ""},
+    "Right Kidney Size": {"min": 0, "max": 0, "unit": "mm"},
+    "Left Kidney Size": {"min": 0, "max": 0, "unit": "mm"},
+    "Urinary Bladder Status": {"min": 0, "max": 0, "unit": ""},
 }
 
 # Report types
@@ -109,7 +75,8 @@ REPORT_TYPES = [
     "Liver Function Test (LFT)",
     "Complete Blood Picture (CBP)",
     "Thyroid Test",
-    "Comprehensive Health Check"
+    "Comprehensive Health Check",
+    "Ultrasound Report"
 ]
 
 # Excel columns - organized by test type
@@ -117,6 +84,9 @@ EXCEL_COLUMNS = [
     # Basic Information
     "Date",
     "Report Type",
+    "Patient Name",
+    "Patient Age",
+    "Patient Gender",
     "Notes",
     
     # Basic Vitals
@@ -159,6 +129,17 @@ EXCEL_COLUMNS = [
     "T3 (Triiodothyronine)",
     "T4 (Thyroxine)",
     "TSH",
+    
+    # Ultrasound Parameters
+    "Liver Size",
+    "Gall Bladder Status",
+    "Spleen Size",
+    "Pancreas Status",
+    "Right Kidney Size",
+    "Left Kidney Size",
+    "Urinary Bladder Status",
+    "Ultrasound Findings",
+    "Ultrasound Impression",
 ]
 
 # Test parameter mapping for automatic detection
@@ -182,5 +163,16 @@ TEST_PARAMETERS = {
     "Vitals Check": [
         "Blood Pressure Systolic", "Blood Pressure Diastolic",
         "Heart Rate", "Temperature"
+    ],
+    "Ultrasound Report": [
+        "Liver Size", "Gall Bladder Status", "Spleen Size", 
+        "Pancreas Status", "Right Kidney Size", "Left Kidney Size",
+        "Urinary Bladder Status", "Ultrasound Findings", "Ultrasound Impression"
     ]
 }
+
+# Color palette for distinct line graphs
+COLOR_PALETTE = [
+    '#FF0000', '#00FF00', '#0000FF', '#FF00FF', '#FFFF00', '#00FFFF',
+    '#FFA500', '#800080', '#008080', '#FFC0CB', '#A52A2A', '#808080'
+]
