@@ -40,18 +40,42 @@ class Visualizer:
     def create_multi_test_trend_chart(self, df, parameter, report_type=None):
         """Create a multi-line trend chart showing all tests of same type"""
         if df.empty or parameter not in df.columns:
+            print(f"Warning: Parameter '{parameter}' not found in data or dataframe is empty")
             return None
+        
+        # Make sure Date column is datetime
+        if 'Date' in df.columns:
+            df = df.copy()
+            try:
+                df['Date'] = pd.to_datetime(df['Date'])
+            except Exception as e:
+                print(f"Error: Could not convert Date column to datetime: {e}")
+                return None
         
         # Filter by report type if specified
         if report_type and 'Report Type' in df.columns:
-            df = df[df['Report Type'] == report_type]
+            # Ensure report_type is not a Series or pandas object
+            if isinstance(report_type, (pd.Series, pd.DataFrame)):
+                report_type = str(report_type.iloc[0]) if not report_type.empty else None
+            
+            if report_type:
+                df_filtered = df[df['Report Type'] == report_type]
+                if df_filtered.empty:
+                    # If no specific report type, use all data
+                    df_filtered = df
+            else:
+                df_filtered = df
+        else:
+            df_filtered = df
         
-        if df.empty:
+        # Check if we have data for this parameter
+        if df_filtered[parameter].dropna().empty:
+            print(f"Warning: No data available for parameter: {parameter}")
             return None
         
         # Group by patient name if available
-        if 'Patient Name' in df.columns:
-            patients = df['Patient Name'].unique()
+        if 'Patient Name' in df_filtered.columns:
+            patients = df_filtered['Patient Name'].unique()
         else:
             patients = ['All Tests']
         
@@ -59,14 +83,18 @@ class Visualizer:
         
         # Add a line for each patient
         for i, patient in enumerate(patients):
-            if 'Patient Name' in df.columns:
-                patient_data = df[df['Patient Name'] == patient]
+            if 'Patient Name' in df_filtered.columns:
+                patient_data = df_filtered[df_filtered['Patient Name'] == patient]
             else:
-                patient_data = df
+                patient_data = df_filtered
             
+            # Get data for this parameter
             patient_data = patient_data[['Date', parameter]].dropna()
             
             if not patient_data.empty:
+                # Sort by date
+                patient_data = patient_data.sort_values('Date')
+                
                 color = COLOR_PALETTE[i % len(COLOR_PALETTE)]
                 
                 fig.add_trace(go.Scatter(
@@ -77,43 +105,58 @@ class Visualizer:
                     line=dict(color=color, width=3),
                     marker=dict(size=10, symbol='circle'),
                     hovertemplate=(
-                        '<b>%{text}</b><br>' +
-                        'Date: %{x}<br>' +
+                        '<b>Date: %{x|%Y-%m-%d}</b><br>' +
                         f'{parameter}: %{{y}}<br>' +
                         'Patient: ' + str(patient) +
                         '<extra></extra>'
                     ),
-                    text=patient_data['Date'].dt.strftime('%Y-%m-%d')
+                    text=[f"{patient}: {val}" for val in patient_data[parameter]]
                 ))
         
-        # Set y-axis to start from 0
-        y_min = 0
-        y_max = df[parameter].max() * 1.1 if not df[parameter].empty else 10
+        if len(fig.data) == 0:
+            print(f"Warning: No valid data points for parameter: {parameter}")
+            return None
         
+        # Set y-axis range
+        try:
+            y_min = df_filtered[parameter].min() * 0.9 if df_filtered[parameter].min() > 0 else 0
+            y_max = df_filtered[parameter].max() * 1.1
+        except:
+            y_min = 0
+            y_max = 10
+        
+        # Format x-axis dates
         fig.update_layout(
             title={
                 'text': f"{parameter} Trend Analysis",
-                'font': {'size': 20, 'color': 'black'}
+                'font': {'size': 20, 'color': 'black'},
+                'y': 0.95,
+                'x': 0.5,
+                'xanchor': 'center',
+                'yanchor': 'top'
             },
             xaxis_title={
                 'text': "Date",
                 'font': {'size': 14, 'color': 'black'}
             },
             yaxis_title={
-                'text': parameter,
+                'text': f"{parameter} ({NORMAL_RANGES.get(parameter, {}).get('unit', '')})",
                 'font': {'size': 14, 'color': 'black'}
             },
             hovermode='closest',
             height=500,
             plot_bgcolor='white',
             paper_bgcolor='white',
+            showlegend=True if len(patients) > 1 else False,
             xaxis=dict(
                 showgrid=True,
                 gridcolor='lightgray',
                 tickfont=dict(color='black', size=12),
                 title_font=dict(color='black', size=14),
                 zeroline=True,
-                zerolinecolor='black'
+                zerolinecolor='black',
+                tickformat='%Y-%m-%d',
+                type='date'
             ),
             yaxis=dict(
                 showgrid=True,
@@ -137,31 +180,69 @@ class Visualizer:
     def create_comparison_chart(self, df, parameters, report_type=None):
         """Create comparison chart for multiple parameters"""
         if df.empty:
+            print("Warning: No data available for comparison")
             return None
+        
+        # Make sure Date column is datetime
+        if 'Date' in df.columns:
+            df = df.copy()
+            try:
+                df['Date'] = pd.to_datetime(df['Date'])
+            except Exception as e:
+                print(f"Error: Could not convert Date column to datetime: {e}")
+                return None
         
         # Filter by report type if specified
         if report_type and 'Report Type' in df.columns:
             df = df[df['Report Type'] == report_type]
         
+        if df.empty:
+            print(f"Warning: No data available for report type: {report_type}")
+            return None
+        
+        # Get latest report
+        latest_report = df.sort_values('Date', ascending=False).iloc[0] if not df.empty else None
+        
+        if latest_report is None:
+            print("Warning: No latest report found")
+            return None
+        
         # Get latest values for each parameter
         latest_values = {}
         for param in parameters:
             if param in df.columns:
-                latest = df[param].dropna().iloc[-1] if not df[param].dropna().empty else None
-                latest_values[param] = latest
+                # Get the most recent non-null value
+                non_null_values = df[['Date', param]].dropna()
+                if not non_null_values.empty:
+                    latest = non_null_values.sort_values('Date', ascending=False).iloc[0][param]
+                    latest_values[param] = latest
         
         if not latest_values:
+            print("Warning: No parameter values found for comparison")
             return None
         
         fig = go.Figure()
         
         colors = COLOR_PALETTE[:len(latest_values)]
         
+        # Prepare data for display
+        param_names = list(latest_values.keys())
+        param_values = list(latest_values.values())
+        
+        # Get units for y-axis labels
+        units = []
+        for param in param_names:
+            unit = NORMAL_RANGES.get(param, {}).get('unit', '')
+            units.append(f" ({unit})" if unit else "")
+        
+        # Create display names with units
+        display_names = [f"{name}{units[i]}" for i, name in enumerate(param_names)]
+        
         fig.add_trace(go.Bar(
-            x=list(latest_values.keys()),
-            y=list(latest_values.values()),
+            x=display_names,
+            y=param_values,
             marker_color=colors,
-            text=[f"{v:.2f}" if isinstance(v, (int, float)) else str(v) for v in latest_values.values()],
+            text=[f"{v:.2f}" if isinstance(v, (int, float)) else str(v) for v in param_values],
             textposition='auto',
             textfont=dict(color='black', size=12)
         ))
@@ -184,7 +265,8 @@ class Visualizer:
             paper_bgcolor='white',
             xaxis=dict(
                 tickfont=dict(color='black', size=12),
-                title_font=dict(color='black', size=14)
+                title_font=dict(color='black', size=14),
+                tickangle=-45
             ),
             yaxis=dict(
                 tickfont=dict(color='black', size=12),
@@ -199,19 +281,34 @@ class Visualizer:
     def create_ultrasound_trend_chart(self, df, parameter):
         """Create trend chart for ultrasound parameters"""
         if df.empty or parameter not in df.columns:
+            print(f"Warning: Parameter '{parameter}' not found in ultrasound data")
             return None
+        
+        # Make sure Date column is datetime
+        if 'Date' in df.columns:
+            df = df.copy()
+            try:
+                df['Date'] = pd.to_datetime(df['Date'])
+            except Exception as e:
+                print(f"Error: Could not convert Date column to datetime: {e}")
+                return None
         
         # Filter ultrasound reports
         ultrasound_df = df[df['Report Type'] == 'Ultrasound Report']
         
         if ultrasound_df.empty:
+            print("Warning: No ultrasound reports found")
             return None
         
         # Extract values
         trend_data = ultrasound_df[['Date', parameter]].dropna()
         
         if trend_data.empty:
+            print(f"Warning: No data available for ultrasound parameter: {parameter}")
             return None
+        
+        # Sort by date
+        trend_data = trend_data.sort_values('Date')
         
         fig = go.Figure()
         
@@ -221,12 +318,21 @@ class Visualizer:
             mode='lines+markers',
             name=parameter,
             line=dict(color=COLOR_PALETTE[0], width=3),
-            marker=dict(size=10, symbol='circle')
+            marker=dict(size=10, symbol='circle'),
+            hovertemplate=(
+                '<b>Date: %{x|%Y-%m-%d}</b><br>' +
+                f'{parameter}: %{{y}}<br>' +
+                '<extra></extra>'
+            )
         ))
         
-        # Set y-axis to start from 0
-        y_min = 0
-        y_max = trend_data[parameter].max() * 1.1
+        # Set y-axis range
+        try:
+            y_min = trend_data[parameter].min() * 0.9 if trend_data[parameter].min() > 0 else 0
+            y_max = trend_data[parameter].max() * 1.1
+        except:
+            y_min = 0
+            y_max = 10
         
         fig.update_layout(
             title={
@@ -248,7 +354,9 @@ class Visualizer:
                 showgrid=True,
                 gridcolor='lightgray',
                 tickfont=dict(color='black', size=12),
-                title_font=dict(color='black', size=14)
+                title_font=dict(color='black', size=14),
+                tickformat='%Y-%m-%d',
+                type='date'
             ),
             yaxis=dict(
                 showgrid=True,

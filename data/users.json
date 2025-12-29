@@ -5,6 +5,20 @@
   },
   "test": {
     "password": "$2b$12$bzyrN0QzbwoCAvsryvTOROYMolcd71GH3.NHs27f1y5cScZ2/yRkC",
-    "email": "test@gmail.com"
+    "email": "test@gmail.com",
+    "family_members": {
+      "Aagaaz_1": {
+        "name": "Aagaaz",
+        "age": 21,
+        "gender": "Male",
+        "relationship": "Child",
+        "created_at": "2025-12-29 20:17:35.330198"
+      }
+    }
+  },
+  "siya": {
+    "password": "$2b$12$l5G80sulC4LozbUZ14WSWue65tzelP1.Rf4w5KNHu7/tIYUQ8W0FW",
+    "email": "siya@gmai",
+    "family_members": {}
   }
 }

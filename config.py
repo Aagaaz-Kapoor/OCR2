@@ -57,7 +57,7 @@ NORMAL_RANGES = {
     "Eosinophils": {"min": 1, "max": 6, "unit": "%"},
     "Gamma Glutamyl Transferase": {"min": 8, "max": 61, "unit": "U/L"},
     
-    # Ultrasound Parameters
+    # Ultrasound Parameters (no normal ranges, just display)
     "Liver Size": {"min": 0, "max": 0, "unit": "mm"},
     "Gall Bladder Status": {"min": 0, "max": 0, "unit": ""},
     "Spleen Size": {"min": 0, "max": 0, "unit": "mm"},
@@ -167,7 +167,7 @@ TEST_PARAMETERS = {
     "Ultrasound Report": [
         "Liver Size", "Gall Bladder Status", "Spleen Size", 
         "Pancreas Status", "Right Kidney Size", "Left Kidney Size",
-        "Urinary Bladder Status", "Ultrasound Findings", "Ultrasound Impression"
+        "Urinary Bladder Status"
     ]
 }
 

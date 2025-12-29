@@ -35,6 +35,22 @@ class OCRProcessor:
             print("Please update poppler_path variable with correct path")
             self.poppler_path = None
     
+    def create_manual_report(self, report_type, patient_info=None):
+        """Create a manual report template for manual data entry"""
+        # Initialize data structure with all columns
+        data = {col: None for col in EXCEL_COLUMNS}
+        
+        # Set basic info
+        data["Date"] = datetime.now().strftime("%Y-%m-%d")
+        data["Report Type"] = report_type
+        data["Notes"] = "Manual Entry"
+        
+        # Add patient info if provided
+        if patient_info:
+            data.update(patient_info)
+        
+        return data
+    
     def extract_text_from_pdf(self, pdf_bytes):
         """Convert PDF to images and extract text using OCR"""
         try:
@@ -107,24 +123,28 @@ class OCRProcessor:
             "Patient Gender": None
         }
         
-        # Extract Patient Name
+        # Extract Patient Name - Improved pattern
         name_patterns = [
-            r"Patient Name[:\s]*([A-Za-z\s]+)",
-            r"Name[:\s]*([A-Za-z\s]+)",
-            r"Patient[:\s]*([A-Za-z\s]+)"
+            r"Patient Name[:\s]*([A-Za-z\s\-]+)",
+            r"Name[:\s]*([A-Za-z\s\-]+)",
+            r"Patient[:\s]*([A-Za-z\s\-]+)",
+            r"Baby\s+([A-Za-z\s\-]+)",
+            r"([A-Z][a-z]+\s+[A-Z][a-z]+)"  # Simple name pattern
         ]
         
         for pattern in name_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
-                patient_info["Patient Name"] = match.group(1).strip()
-                break
+                name = match.group(1).strip()
+                if len(name) > 2:  # Filter out very short matches
+                    patient_info["Patient Name"] = name
+                    break
         
-        # Extract Age
+        # Extract Age - Improved pattern
         age_patterns = [
             r"Age[:\s]*([0-9]+[YMD\s]*)",
-            r"Y[:\s]*([0-9]+[YMD\s]*)",
-            r"(\d+)[\s]*(?:years|yrs|year|Y)"
+            r"(\d+)[\s]*(?:years|yrs|year|Y|months|month|M|days|day|D)",
+            r"(\d+)[YMD]"
         ]
         
         for pattern in age_patterns:
@@ -137,13 +157,13 @@ class OCRProcessor:
         gender_patterns = [
             r"Gender[:\s]*([A-Za-z]+)",
             r"Sex[:\s]*([A-Za-z]+)",
-            r"Male|Female"
+            r"\b(Male|Female)\b"
         ]
         
         for pattern in gender_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
-                patient_info["Patient Gender"] = match.group(0).strip()
+                patient_info["Patient Gender"] = match.group(1).strip()
                 break
         
         return patient_info
@@ -193,6 +213,69 @@ class OCRProcessor:
         
         return ultrasound_data
     
+    def extract_medical_values(self, text):
+        """Extract medical values with improved parsing"""
+        values = {}
+        
+        # Improved patterns for medical parameters
+        patterns = {
+            "Hemoglobin": [r"HEMOGLOBIN.*?([0-9]+\.?[0-9]*)\s*g/dL", r"Hb.*?([0-9]+\.?[0-9]*)"],
+            "RBC": [r"RBC.*?([0-9]+\.?[0-9]*)\s*10", r"Red Blood Cells.*?([0-9]+\.?[0-9]*)"],
+            "WBC": [r"WBC.*?([0-9]+\.?[0-9]*)\s*10", r"White Blood Cells.*?([0-9]+\.?[0-9]*)"],
+            "Platelets": [r"PLATELET.*?([0-9]+\.?[0-9]*)\s*10", r"Platelet Count.*?([0-9]+\.?[0-9]*)"],
+            "Glucose": [r"GLUCOSE.*?([0-9]+\.?[0-9]*)\s*mg/dL", r"Blood Sugar.*?([0-9]+\.?[0-9]*)"],
+            "Cholesterol": [r"CHOLESTEROL.*?([0-9]+\.?[0-9]*)\s*mg/dL"],
+            "Total Bilirubin": [r"TOTAL BILIRUBIN.*?([0-9]+\.?[0-9]*)\s*mg/dL"],
+            "Conjugated Bilirubin": [r"CONJUGATED BILIRUBIN.*?([0-9]+\.?[0-9]*)\s*mg/dL"],
+            "Unconjugated Bilirubin": [r"UNCONJUGATED BILIRUBIN.*?([0-9]+\.?[0-9]*)\s*mg/dL"],
+            "SGOT (AST)": [r"SGOT.*?([0-9]+\.?[0-9]*)\s*U/L", r"AST.*?([0-9]+\.?[0-9]*)\s*U/L"],
+            "SGPT (ALT)": [r"SGPT.*?([0-9]+\.?[0-9]*)\s*U/L", r"ALT.*?([0-9]+\.?[0-9]*)\s*U/L"],
+            "Alkaline Phosphatase": [r"ALKALINE PHOSPHATASE.*?([0-9]+\.?[0-9]*)\s*U/L"],
+            "Total Protein": [r"TOTAL PROTEIN.*?([0-9]+\.?[0-9]*)\s*g/dL", r"PROTEIN.*?([0-9]+\.?[0-9]*)\s*g/dL"],
+            "Albumin": [r"ALBUMIN.*?([0-9]+\.?[0-9]*)\s*g/dL"],
+            "Globulin": [r"GLOBULIN.*?([0-9]+\.?[0-9]*)\s*g/dL"],
+            "A/G Ratio": [r"A/G RATIO.*?([0-9]+\.?[0-9]*)"],
+            "PCV/HCT": [r"PCV.*?([0-9]+\.?[0-9]*)\s*%", r"HCT.*?([0-9]+\.?[0-9]*)\s*%"],
+            "MCV": [r"MCV.*?([0-9]+\.?[0-9]*)\s*fL"],
+            "MCH": [r"MCH.*?([0-9]+\.?[0-9]*)\s*pg"],
+            "MCHC": [r"MCHC.*?([0-9]+\.?[0-9]*)\s*g/dL"],
+            "RDW-CV": [r"RDW.*?([0-9]+\.?[0-9]*)\s*%"],
+            "MPV": [r"MPV.*?([0-9]+\.?[0-9]*)\s*fL"],
+            "Neutrophils": [r"NEUTROPHILS.*?([0-9]+\.?[0-9]*)\s*%"],
+            "Lymphocytes": [r"LYMPHOCYTES.*?([0-9]+\.?[0-9]*)\s*%"],
+            "Monocytes": [r"MONOCYTES.*?([0-9]+\.?[0-9]*)\s*%"],
+            "Eosinophils": [r"EOSINOPHILS.*?([0-9]+\.?[0-9]*)\s*%"],
+            "T3 (Triiodothyronine)": [r"T3.*?([0-9]+\.?[0-9]*)\s*ng/mL", r"TRIIODOTHYRONINE.*?([0-9]+\.?[0-9]*)"],
+            "T4 (Thyroxine)": [r"T4.*?([0-9]+\.?[0-9]*)\s*µg/dL", r"THYROXINE.*?([0-9]+\.?[0-9]*)"],
+            "TSH": [r"TSH.*?([0-9]+\.?[0-9]*)\s*µIU/mL", r"THYROID STIMULATING.*?([0-9]+\.?[0-9]*)"],
+            "Blood Pressure Systolic": [r"(\d{2,3})/\d{2,3}\s*mmHg", r"BP.*?(\d{2,3})/\d{2,3}"],
+            "Blood Pressure Diastolic": [r"\d{2,3}/(\d{2,3})\s*mmHg", r"BP.*?\d{2,3}/(\d{2,3})"],
+            "Heart Rate": [r"Heart Rate.*?(\d{2,3})\s*bpm", r"HR.*?(\d{2,3})"],
+            "Temperature": [r"Temperature.*?(\d{2,3}\.\d)\s*°F", r"Temp.*?(\d{2,3}\.\d)"]
+        }
+        
+        # Extract each parameter
+        for param, param_patterns in patterns.items():
+            for pattern in param_patterns:
+                match = re.search(pattern, text, re.IGNORECASE)
+                if match:
+                    try:
+                        value = float(match.group(1))
+                        values[param] = value
+                        break  # Stop after first match
+                    except ValueError:
+                        continue
+        
+        # Special handling for blood pressure
+        bp_pattern = r"(\d{2,3})/(\d{2,3})"
+        bp_matches = re.findall(bp_pattern, text)
+        if bp_matches:
+            systolic, diastolic = bp_matches[0]
+            values["Blood Pressure Systolic"] = float(systolic)
+            values["Blood Pressure Diastolic"] = float(diastolic)
+        
+        return values
+    
     def extract_value_with_keywords(self, text, keywords):
         """Extract numerical value associated with keyword variations"""
         text_lower = text.lower()
@@ -213,7 +296,7 @@ class OCRProcessor:
                         continue
         return None
     
-    def parse_medical_report(self, text):
+    def parse_medical_report(self, text, selected_test_type=None):
         """Parse medical report text and extract all parameters"""
         print("Parsing extracted text...")
         
@@ -226,59 +309,18 @@ class OCRProcessor:
         
         # Set basic info
         data["Date"] = datetime.now().strftime("%Y-%m-%d")
-        data["Report Type"] = self.detect_report_type(text)
+        data["Report Type"] = selected_test_type or self.detect_report_type(text)
         data["Notes"] = ""
+        
+        # Extract all medical values
+        medical_values = self.extract_medical_values(text)
+        data.update(medical_values)
         
         # Check if it's an ultrasound report
         if data["Report Type"] == "Ultrasound Report":
             ultrasound_data = self.extract_ultrasound_data(text)
             data.update(ultrasound_data)
             return data
-        
-        # Regular medical test parameters
-        keyword_map = {
-            "Total Bilirubin": ["total bilirubin", "bilirubin.*total"],
-            "Conjugated Bilirubin": ["direct bilirubin", "conjugated bilirubin"],
-            "Unconjugated Bilirubin": ["indirect bilirubin", "unconjugated bilirubin"],
-            "SGOT (AST)": ["sgot", "ast"],
-            "SGPT (ALT)": ["sgpt", "alt"],
-            "Alkaline Phosphatase": ["alkaline phosphatase", "alp"],
-            "Total Protein": ["total protein"],
-            "Albumin": ["albumin"],
-            "Globulin": ["globulin"],
-            "A/G Ratio": ["a/g ratio", "ag ratio"],
-            "Hemoglobin": ["hemoglobin", "hb"],
-            "RBC": ["rbc"],
-            "WBC": ["wbc"],
-            "Platelets": ["platelet"],
-            "PCV/HCT": ["pcv", "hct", "hematocrit"],
-            "MCV": ["mcv"],
-            "MCH": ["mch"],
-            "MCHC": ["mchc"],
-            "RDW-CV": ["rdw"],
-            "MPV": ["mpv"],
-            "Neutrophils": ["neutrophils"],
-            "Lymphocytes": ["lymphocytes"],
-            "Monocytes": ["monocytes"],
-            "Eosinophils": ["eosinophils"],
-            "Glucose": ["glucose", "blood sugar"],
-            "Cholesterol": ["cholesterol"],
-            "T3 (Triiodothyronine)": ["t3", "triiodothyronine"],
-            "T4 (Thyroxine)": ["t4", "thyroxine"],
-            "TSH": ["tsh", "thyroid stimulating"]
-        }
-        
-        # Extract values for all parameters
-        for param_name, keywords in keyword_map.items():
-            value = self.extract_value_with_keywords(text, keywords)
-            if value is not None:
-                data[param_name] = value
-        
-        # Extract blood pressure
-        bp = re.findall(r"(\d{2,3})/(\d{2,3})", text)
-        if bp:
-            data["Blood Pressure Systolic"] = float(bp[0][0])
-            data["Blood Pressure Diastolic"] = float(bp[0][1])
         
         # Calculate derived values
         if data["Albumin"] and data["Total Protein"]:
@@ -290,10 +332,10 @@ class OCRProcessor:
         
         return data
     
-    def process_pdf_report(self, pdf_bytes):
+    def process_pdf_report(self, pdf_bytes, selected_test_type=None):
         """Main method to process PDF and return structured data"""
         text = self.extract_text_from_pdf(pdf_bytes)
-        parsed_data = self.parse_medical_report(text)
+        parsed_data = self.parse_medical_report(text, selected_test_type)
         return parsed_data, text
     
     def get_detected_parameters(self, parsed_data):
