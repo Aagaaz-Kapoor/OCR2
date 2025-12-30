@@ -42,6 +42,8 @@ if "extracted_text" not in st.session_state:
     st.session_state.extracted_text = None
 if "report_saved" not in st.session_state:
     st.session_state.report_saved = False
+if "show_all_reports_in_upload" not in st.session_state:
+    st.session_state.show_all_reports_in_upload = False
 
 auth_manager = AuthManager()
 
@@ -60,6 +62,7 @@ def logout():
     st.session_state.selected_test_type = None
     st.session_state.extracted_text = None
     st.session_state.report_saved = False
+    st.session_state.show_all_reports_in_upload = False
     st.rerun()
 
 # ----------------------------------
@@ -190,6 +193,14 @@ def main_app():
 # UPLOAD PAGE
 # ----------------------------------
 def upload_page(data_manager, ocr):
+    # Check if we're coming from the "View All Reports" button
+    if "show_all_reports_in_upload" in st.session_state and st.session_state.show_all_reports_in_upload:
+        # Reset the flag
+        st.session_state.show_all_reports_in_upload = False
+        # Show all reports directly
+        all_reports_page(data_manager)
+        return
+    
     st.title("📤 Upload Medical Report")
     
     # Check if report was just saved
@@ -203,9 +214,9 @@ def upload_page(data_manager, ocr):
                 st.rerun()
         with col2:
             if st.button("📋 View All Reports"):
-                st.session_state.navigation = "📋 All Reports"
                 st.session_state.report_saved = False
                 st.session_state.editing_report = False
+                st.session_state.show_all_reports_in_upload = True
                 st.rerun()
         return
     
@@ -832,9 +843,6 @@ def family_profiles_page(auth_manager):
                 
                 st.divider()
 
-# ----------------------------------
-# SETTINGS PAGE
-# ----------------------------------
 # ----------------------------------
 # SETTINGS PAGE
 # ----------------------------------
