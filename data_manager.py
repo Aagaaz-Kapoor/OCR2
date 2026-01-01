@@ -20,6 +20,10 @@ class DataManager:
             df = pd.read_excel(self.excel_file)
             new_row = pd.DataFrame([report_data])
             df = pd.concat([df, new_row], ignore_index=True)
+            # Sort by date in ascending order
+            if 'Date' in df.columns:
+                df['Date'] = pd.to_datetime(df['Date'])
+                df = df.sort_values('Date', ascending=True)
             df.to_excel(self.excel_file, index=False)
             return True, "Report added successfully"
         except Exception as e:
@@ -31,7 +35,7 @@ class DataManager:
             df = pd.read_excel(self.excel_file)
             if 'Date' in df.columns:
                 df['Date'] = pd.to_datetime(df['Date'])
-                df = df.sort_values('Date', ascending=False)
+                df = df.sort_values('Date', ascending=True)
             return df
         except Exception as e:
             return pd.DataFrame(columns=EXCEL_COLUMNS)
@@ -40,7 +44,8 @@ class DataManager:
         """Get the most recent report"""
         df = self.get_all_reports()
         if not df.empty:
-            return df.iloc[0].to_dict()
+            # Since reports are sorted in ascending order, the latest is at the end
+            return df.iloc[-1].to_dict()
         return None
     
     def get_parameter_history(self, parameter):

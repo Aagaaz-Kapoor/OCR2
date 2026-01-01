@@ -228,39 +228,16 @@ def upload_page(data_manager, ocr):
         uploaded = st.file_uploader("Upload PDF Report", type=["pdf"], key="pdf_upload")
         
         if uploaded:
-            # Display test type selection BEFORE processing
-            st.subheader("Select Test Type")
-            test_options = [
-                "Auto Detect",
-                "Blood Test",
-                "Vitals Check",
-                "General Checkup",
-                "Liver Function Test (LFT)",
-                "Complete Blood Picture (CBP)",
-                "Thyroid Test",
-                "Comprehensive Health Check",
-                "Ultrasound Report"
-            ]
-            
-            selected_test = st.selectbox(
-                "Choose the type of test in the report:",
-                test_options,
-                key="test_type_select"
-            )
-            
-            if selected_test == "Auto Detect":
-                selected_test = None
-            
-            # Process button
+            # Process button - auto-detect test type
             if st.button("🚀 Process PDF", type="primary", key="process_pdf"):
-                with st.spinner("Processing OCR..."):
+                with st.spinner("Processing OCR and auto-detecting test type..."):
                     try:
                         pdf_bytes = uploaded.read()
                         
-                        # Process PDF with optional test type
-                        parsed, text = ocr.process_pdf_report(pdf_bytes, selected_test)
+                        # Process PDF with auto-detection (pass None for selected_test_type)
+                        parsed, text = ocr.process_pdf_report(pdf_bytes, None)
                         
-                        st.success("✅ OCR Successful!")
+                        st.success("✅ OCR Successful! Test type auto-detected.")
                         
                         # Store extracted text
                         st.session_state.extracted_text = text
@@ -268,7 +245,7 @@ def upload_page(data_manager, ocr):
                         # Store parsed data in session for editing
                         st.session_state.current_report = parsed
                         st.session_state.editing_report = True
-                        st.session_state.selected_test_type = selected_test
+                        st.session_state.selected_test_type = parsed.get("Report Type")
                         
                         st.rerun()
                         

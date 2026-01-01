@@ -87,9 +87,11 @@ class OCRProcessor:
         """Automatically detect the type of medical report"""
         text_lower = text.lower()
         
-        # Check for Ultrasound
-        if any(keyword in text_lower for keyword in 
-               ['ultrasound', 'sonography', 'usg', 'echotexture', 'mm']):
+        # Check for Ultrasound - require more specific keywords (removed 'mm' as it's too generic)
+        # Check for multiple ultrasound-specific keywords to reduce false positives
+        ultrasound_keywords = ['ultrasound', 'sonography', 'usg', 'echotexture', 'echogenicity', 
+                              'gallbladder', 'spleen size', 'kidney size', 'liver size']
+        if any(keyword in text_lower for keyword in ultrasound_keywords):
             return "Ultrasound Report"
         
         # Check for Liver Function Test
@@ -114,6 +116,69 @@ class OCRProcessor:
         
         else:
             return "Blood Test"
+    
+    def extract_date(self, text):
+        """Extract date from report text"""
+        # Common date patterns found in medical reports
+        date_patterns = [
+            # DD/MM/YYYY or DD-MM-YYYY
+            r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})",
+            # YYYY/MM/DD or YYYY-MM-DD
+            r"(\d{4})[/-](\d{1,2})[/-](\d{1,2})",
+            # DD MMM YYYY (e.g., 15 Jan 2024)
+            r"(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})",
+            # MMM DD, YYYY (e.g., Jan 15, 2024)
+            r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2}),?\s+(\d{4})",
+            # Date: DD/MM/YYYY or Date: DD-MM-YYYY
+            r"Date[:\s]+(\d{1,2})[/-](\d{1,2})[/-](\d{4})",
+            # Report Date: DD/MM/YYYY
+            r"Report\s+Date[:\s]+(\d{1,2})[/-](\d{1,2})[/-](\d{4})",
+            # Test Date: DD/MM/YYYY
+            r"Test\s+Date[:\s]+(\d{1,2})[/-](\d{1,2})[/-](\d{4})",
+        ]
+        
+        month_map = {
+            'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+            'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+        }
+        
+        for pattern in date_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            if matches:
+                try:
+                    match = matches[0]  # Take first match
+                    if len(match) == 3:
+                        # Handle DD/MM/YYYY or DD-MM-YYYY
+                        if len(match[0]) <= 2 and len(match[1]) <= 2:
+                            day, month, year = int(match[0]), int(match[1]), int(match[2])
+                            # Check if year is 2-digit, convert to 4-digit (assuming 2000s)
+                            if year < 100:
+                                year += 2000
+                            return f"{year}-{month:02d}-{day:02d}"
+                        # Handle YYYY/MM/DD or YYYY-MM-DD
+                        elif len(match[0]) == 4:
+                            year, month, day = int(match[0]), int(match[1]), int(match[2])
+                            return f"{year}-{month:02d}-{day:02d}"
+                        # Handle text months (DD MMM YYYY)
+                        elif match[1].isalpha():
+                            day = int(match[0])
+                            month_str = match[1].lower()[:3]
+                            month = month_map.get(month_str)
+                            year = int(match[2])
+                            if month:
+                                return f"{year}-{month:02d}-{day:02d}"
+                        # Handle text months (MMM DD, YYYY)
+                        elif match[0].isalpha():
+                            month_str = match[0].lower()[:3]
+                            month = month_map.get(month_str)
+                            day = int(match[1])
+                            year = int(match[2])
+                            if month:
+                                return f"{year}-{month:02d}-{day:02d}"
+                except (ValueError, IndexError) as e:
+                    continue
+        
+        return None
     
     def extract_patient_info(self, text):
         """Extract patient information from report"""
@@ -307,8 +372,13 @@ class OCRProcessor:
         patient_info = self.extract_patient_info(text)
         data.update(patient_info)
         
-        # Set basic info
-        data["Date"] = datetime.now().strftime("%Y-%m-%d")
+        # Extract date from report, fallback to current date if not found
+        extracted_date = self.extract_date(text)
+        if extracted_date:
+            data["Date"] = extracted_date
+        else:
+            data["Date"] = datetime.now().strftime("%Y-%m-%d")
+        
         data["Report Type"] = selected_test_type or self.detect_report_type(text)
         data["Notes"] = ""
         
@@ -494,9 +564,11 @@ class OCRProcessor:
         """Automatically detect the type of medical report"""
         text_lower = text.lower()
         
-        # Check for Ultrasound
-        if any(keyword in text_lower for keyword in 
-               ['ultrasound', 'sonography', 'usg', 'echotexture', 'mm']):
+        # Check for Ultrasound - require more specific keywords (removed 'mm' as it's too generic)
+        # Check for multiple ultrasound-specific keywords to reduce false positives
+        ultrasound_keywords = ['ultrasound', 'sonography', 'usg', 'echotexture', 'echogenicity', 
+                              'gallbladder', 'spleen size', 'kidney size', 'liver size']
+        if any(keyword in text_lower for keyword in ultrasound_keywords):
             return "Ultrasound Report"
         
         # Check for Liver Function Test
@@ -521,6 +593,69 @@ class OCRProcessor:
         
         else:
             return "Blood Test"
+    
+    def extract_date(self, text):
+        """Extract date from report text"""
+        # Common date patterns found in medical reports
+        date_patterns = [
+            # DD/MM/YYYY or DD-MM-YYYY
+            r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})",
+            # YYYY/MM/DD or YYYY-MM-DD
+            r"(\d{4})[/-](\d{1,2})[/-](\d{1,2})",
+            # DD MMM YYYY (e.g., 15 Jan 2024)
+            r"(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{4})",
+            # MMM DD, YYYY (e.g., Jan 15, 2024)
+            r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2}),?\s+(\d{4})",
+            # Date: DD/MM/YYYY or Date: DD-MM-YYYY
+            r"Date[:\s]+(\d{1,2})[/-](\d{1,2})[/-](\d{4})",
+            # Report Date: DD/MM/YYYY
+            r"Report\s+Date[:\s]+(\d{1,2})[/-](\d{1,2})[/-](\d{4})",
+            # Test Date: DD/MM/YYYY
+            r"Test\s+Date[:\s]+(\d{1,2})[/-](\d{1,2})[/-](\d{4})",
+        ]
+        
+        month_map = {
+            'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+            'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
+        }
+        
+        for pattern in date_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            if matches:
+                try:
+                    match = matches[0]  # Take first match
+                    if len(match) == 3:
+                        # Handle DD/MM/YYYY or DD-MM-YYYY
+                        if len(match[0]) <= 2 and len(match[1]) <= 2:
+                            day, month, year = int(match[0]), int(match[1]), int(match[2])
+                            # Check if year is 2-digit, convert to 4-digit (assuming 2000s)
+                            if year < 100:
+                                year += 2000
+                            return f"{year}-{month:02d}-{day:02d}"
+                        # Handle YYYY/MM/DD or YYYY-MM-DD
+                        elif len(match[0]) == 4:
+                            year, month, day = int(match[0]), int(match[1]), int(match[2])
+                            return f"{year}-{month:02d}-{day:02d}"
+                        # Handle text months (DD MMM YYYY)
+                        elif match[1].isalpha():
+                            day = int(match[0])
+                            month_str = match[1].lower()[:3]
+                            month = month_map.get(month_str)
+                            year = int(match[2])
+                            if month:
+                                return f"{year}-{month:02d}-{day:02d}"
+                        # Handle text months (MMM DD, YYYY)
+                        elif match[0].isalpha():
+                            month_str = match[0].lower()[:3]
+                            month = month_map.get(month_str)
+                            day = int(match[1])
+                            year = int(match[2])
+                            if month:
+                                return f"{year}-{month:02d}-{day:02d}"
+                except (ValueError, IndexError) as e:
+                    continue
+        
+        return None
     
     def extract_patient_info(self, text):
         """Extract patient information from report"""
@@ -714,8 +849,13 @@ class OCRProcessor:
         patient_info = self.extract_patient_info(text)
         data.update(patient_info)
         
-        # Set basic info
-        data["Date"] = datetime.now().strftime("%Y-%m-%d")
+        # Extract date from report, fallback to current date if not found
+        extracted_date = self.extract_date(text)
+        if extracted_date:
+            data["Date"] = extracted_date
+        else:
+            data["Date"] = datetime.now().strftime("%Y-%m-%d")
+        
         data["Report Type"] = selected_test_type or self.detect_report_type(text)
         data["Notes"] = ""
         

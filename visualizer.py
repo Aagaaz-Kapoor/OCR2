@@ -73,53 +73,77 @@ class Visualizer:
             print(f"Warning: No data available for parameter: {parameter}")
             return None
         
-        # Group by patient name if available
-        if 'Patient Name' in df_filtered.columns:
+        # Group by patient name AND report type to show separate lines for same patient same test type
+        groups = []
+        if 'Patient Name' in df_filtered.columns and 'Report Type' in df_filtered.columns:
+            # Group by both Patient Name and Report Type
+            grouped = df_filtered.groupby(['Patient Name', 'Report Type'])
+            for (patient, report_type), group_data in grouped:
+                groups.append({
+                    'patient': patient,
+                    'report_type': report_type,
+                    'data': group_data
+                })
+        elif 'Patient Name' in df_filtered.columns:
+            # Fallback: group by patient name only
             patients = df_filtered['Patient Name'].unique()
+            for patient in patients:
+                groups.append({
+                    'patient': patient,
+                    'report_type': None,
+                    'data': df_filtered[df_filtered['Patient Name'] == patient]
+                })
         else:
-            patients = ['All Tests']
+            # No grouping columns available
+            groups.append({
+                'patient': 'All Tests',
+                'report_type': None,
+                'data': df_filtered
+            })
         
         fig = go.Figure()
         
-        # Add a line for each patient
-        for i, patient in enumerate(patients):
-            if 'Patient Name' in df_filtered.columns:
-                patient_data = df_filtered[df_filtered['Patient Name'] == patient]
-            else:
-                patient_data = df_filtered
-            
+        # Add a line for each group (patient + report type combination)
+        for i, group in enumerate(groups):
             # Get data for this parameter
-            patient_data = patient_data[['Date', parameter]].dropna()
+            patient_data = group['data'][['Date', parameter]].dropna()
             
             if not patient_data.empty:
-                # Sort by date
+                # Sort by date (ascending)
                 patient_data = patient_data.sort_values('Date')
                 
                 color = COLOR_PALETTE[i % len(COLOR_PALETTE)]
+                
+                # Create label for legend
+                if group['report_type']:
+                    label = f"{group['patient']} - {group['report_type']}"
+                else:
+                    label = f"{group['patient']}"
                 
                 fig.add_trace(go.Scatter(
                     x=patient_data['Date'],
                     y=patient_data[parameter],
                     mode='lines+markers',
-                    name=f"{patient}",
+                    name=label,
                     line=dict(color=color, width=3),
                     marker=dict(size=10, symbol='circle'),
                     hovertemplate=(
                         '<b>Date: %{x|%Y-%m-%d}</b><br>' +
                         f'{parameter}: %{{y}}<br>' +
-                        'Patient: ' + str(patient) +
+                        'Patient: ' + str(group['patient']) +
+                        (f'<br>Test: {group["report_type"]}' if group['report_type'] else '') +
                         '<extra></extra>'
                     ),
-                    text=[f"{patient}: {val}" for val in patient_data[parameter]]
+                    text=[f"{label}: {val}" for val in patient_data[parameter]]
                 ))
         
         if len(fig.data) == 0:
             print(f"Warning: No valid data points for parameter: {parameter}")
             return None
         
-        # Set y-axis range
+        # Set y-axis range - always start from 0
         try:
-            y_min = df_filtered[parameter].min() * 0.9 if df_filtered[parameter].min() > 0 else 0
+            y_min = 0
             y_max = df_filtered[parameter].max() * 1.1
         except:
             y_min = 0
@@ -147,7 +171,7 @@ class Visualizer:
             height=500,
             plot_bgcolor='white',
             paper_bgcolor='white',
-            showlegend=True if len(patients) > 1 else False,
+            showlegend=True if len(groups) > 1 else False,
             xaxis=dict(
                 showgrid=True,
                 gridcolor='lightgray',
@@ -326,9 +350,9 @@ class Visualizer:
             )
         ))
         
-        # Set y-axis range
+        # Set y-axis range - always start from 0
         try:
-            y_min = trend_data[parameter].min() * 0.9 if trend_data[parameter].min() > 0 else 0
+            y_min = 0
             y_max = trend_data[parameter].max() * 1.1
         except:
             y_min = 0
