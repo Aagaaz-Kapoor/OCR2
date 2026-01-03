@@ -1,12 +1,13 @@
 import streamlit as st
 from auth import AuthManager
 from ocr_processor import OCRProcessor
-from data_manager import DataManager
+from data_manager import TrendAnalyzer, DataManager
 from visualizer import Visualizer
 from config import NORMAL_RANGES, REPORT_TYPES, TEST_PARAMETERS
 import pandas as pd
 import os
 from datetime import datetime
+import plotly.express as px 
 
 # ----------------------------------
 # PAGE CONFIG
@@ -117,6 +118,314 @@ def login_page():
                 else:
                     st.error(msg)
 
+
+# ----------------------------------
+# LONGITUDINAL ANALYSIS PAGE (NEW)
+# ----------------------------------
+def longitudinal_analysis_page(data_manager):
+    """Page for longitudinal analysis and trend tracking"""
+    st.title("📈 Longitudinal Medical Analysis")
+    
+    # Get all reports
+    df = data_manager.get_all_reports()
+    
+    if df.empty:
+        st.info("No reports available for analysis. Upload some reports first.")
+        return
+    
+    # Select patient
+    patients = df['Patient Name'].unique()
+    selected_patient = st.selectbox(
+        "Select Patient for Analysis",
+        patients,
+        key="longitudinal_patient"
+    )
+    
+    if not selected_patient:
+        return
+    
+    # Get patient-specific data
+    patient_data = df[df['Patient Name'] == selected_patient]
+    
+    # Show patient summary
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Reports", len(patient_data))
+    with col2:
+        st.metric("Test Types", patient_data['Report Type'].nunique())
+    with col3:
+        try:
+            date_range = f"{patient_data['Date'].min()} to {patient_data['Date'].max()}"
+            st.metric("Date Range", date_range)
+        except:
+            st.metric("Date Range", "N/A")
+    
+    # Initialize trend analyzer
+    trend_analyzer = TrendAnalyzer(data_manager)
+    
+    # Get test type summary
+    test_summary = trend_analyzer.get_test_type_summary(selected_patient)
+    
+    # Display test type cards
+    st.subheader("🔬 Test Type Analysis")
+    
+    for test_type, summary in test_summary.items():
+        with st.expander(f"📋 {test_type} ({summary['count']} reports)", expanded=False):
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.write("**First Test**")
+                st.write(summary['first_date'].strftime('%Y-%m-%d'))
+            
+            with col2:
+                st.write("**Latest Test**")
+                st.write(summary['last_date'].strftime('%Y-%m-%d'))
+            
+            with col3:
+                if summary['frequency_days']:
+                    st.write("**Avg Frequency**")
+                    st.write(f"{summary['frequency_days']:.1f} days")
+            
+            with col4:
+                st.write("**Tracked Parameters**")
+                st.write(len(summary['parameters']))
+            
+            # Show parameter trends for this test type
+            if summary['parameters']:
+                selected_param = st.selectbox(
+                    f"Select parameter to analyze ({test_type})",
+                    summary['parameters'],
+                    key=f"param_{test_type}"
+                )
+                
+                if selected_param:
+                    # Get history
+                    history = trend_analyzer.get_parameter_history(
+                        selected_patient, test_type, selected_param
+                    )
+                    
+                    if not history.empty:
+                        # Create trend chart
+                        visualizer = Visualizer()
+                        fig = visualizer.create_multi_test_trend_chart(
+                            patient_data, selected_param, test_type
+                        )
+                        
+                        if fig:
+                            st.plotly_chart(fig, use_container_width=True)
+                        
+                        # Show trend analysis
+                        from visualizer import AdvancedVisualizer
+                        adv_visualizer = AdvancedVisualizer()
+                        trend_card = adv_visualizer.create_trend_analysis_card(
+                            selected_param, history,
+                            NORMAL_RANGES.get(selected_param)
+                        )
+                        
+                        if trend_card:
+                            col1, col2, col3, col4 = st.columns(4)
+                            with col1:
+                                st.metric(
+                                    "Current Value", 
+                                    f"{trend_card['latest_value']:.2f}",
+                                    f"{trend_card['change_percent']:.1f}%"
+                                )
+                            
+                            with col2:
+                                st.metric(
+                                    "Initial Value",
+                                    f"{trend_card['first_value']:.2f}"
+                                )
+                            
+                            with col3:
+                                st.metric(
+                                    "Data Points",
+                                    trend_card['data_points']
+                                )
+                            
+                            with col4:
+                                st.write("**Status**")
+                                st.markdown(
+                                    f"<span style='color:{trend_card['color']};font-weight:bold'>"
+                                    f"{trend_card['status']}</span>",
+                                    unsafe_allow_html=True
+                                )
+                        
+                        # Detect significant changes
+                        significant = trend_analyzer.detect_significant_changes(
+                            selected_patient, test_type, selected_param, threshold_percent=10
+                        )
+                        
+                        if significant:
+                            st.subheader("⚠️ Significant Changes Detected")
+                            for change in significant:
+                                st.info(
+                                    f"**{change['date'].strftime('%Y-%m-%d')}**: "
+                                    f"{selected_param} changed by {abs(change['change_percent']):.1f}% "
+                                    f"({change['direction']} from {change['from_value']:.2f} to {change['to_value']:.2f})"
+                                )
+    
+    # Comprehensive dashboard
+    st.subheader("📊 Comprehensive Trend Dashboard")
+    
+    # Select test type for comprehensive view
+    test_types = patient_data['Report Type'].unique()
+    selected_comprehensive_test = st.selectbox(
+        "Select test type for comprehensive view",
+        test_types,
+        key="comprehensive_test"
+    )
+    
+    if selected_comprehensive_test:
+        # Get all parameters for this test type
+        test_reports = patient_data[patient_data['Report Type'] == selected_comprehensive_test]
+        
+        # Identify parameters with sufficient data
+        trackable_params = []
+        for col in test_reports.columns:
+            if col not in ['Date', 'Report Type', 'Patient Name', 'Notes', 
+                          'Patient Age', 'Patient Gender']:
+                non_null = test_reports[col].notna().sum()
+                if non_null >= 2:  # Need at least 2 data points for trend
+                    trackable_params.append(col)
+        
+        if trackable_params:
+            # Let user select parameters to compare
+            selected_params = st.multiselect(
+                "Select parameters to compare",
+                trackable_params,
+                default=trackable_params[:3] if len(trackable_params) >= 3 else trackable_params,
+                key="compare_params"
+            )
+            
+            if selected_params:
+                # Create comparison matrix
+                from visualizer import AdvancedVisualizer
+                visualizer = AdvancedVisualizer()
+                matrix_fig = visualizer.create_parameter_comparison_matrix(
+                    patient_data, selected_comprehensive_test
+                )
+                
+                if matrix_fig:
+                    st.plotly_chart(matrix_fig, use_container_width=True)
+                
+                # Create comprehensive trend chart
+                trend_data = test_reports[['Date'] + selected_params].copy()
+                # Ensure Date is datetime
+                trend_data['Date'] = pd.to_datetime(trend_data['Date'])
+                trend_fig = visualizer.create_comprehensive_trend_dashboard(trend_data)
+                
+                if trend_fig:
+                    st.plotly_chart(trend_fig, use_container_width=True)
+                
+                # Show parameter correlations
+                if len(selected_params) >= 2:
+                    st.subheader("🔗 Parameter Correlations")
+                    
+                    # Calculate correlation matrix
+                    corr_data = test_reports[selected_params].corr()
+                    
+                    fig_corr = px.imshow(
+                        corr_data,
+                        text_auto='.2f',
+                        color_continuous_scale='RdBu',
+                        title=f"Correlation Matrix - {selected_comprehensive_test}"
+                    )
+                    
+                    st.plotly_chart(fig_corr, use_container_width=True)
+
+# ----------------------------------
+# HEALTH TIMELINE PAGE (NEW)
+# ----------------------------------
+def health_timeline_page(data_manager):
+    """Page showing health timeline visualization"""
+    st.title("⏳ Health Timeline")
+    
+    df = data_manager.get_all_reports()
+    
+    if df.empty:
+        st.info("No reports available for timeline.")
+        return
+    
+    # Select patient
+    patients = df['Patient Name'].unique()
+    selected_patient = st.selectbox(
+        "Select Patient",
+        patients,
+        key="timeline_patient"
+    )
+    
+    if not selected_patient:
+        return
+    
+    # Get patient data
+    patient_data = df[df['Patient Name'] == selected_patient].copy()
+    patient_data['Date'] = pd.to_datetime(patient_data['Date'], errors='coerce')
+    # Remove rows with invalid dates
+    patient_data = patient_data[patient_data['Date'].notna()].copy()
+    patient_data = patient_data.sort_values('Date', ascending=True)
+    
+    # Create timeline visualization
+    st.subheader("Medical Test Timeline")
+    
+    # Create timeline using plotly
+    from visualizer import AdvancedVisualizer
+    visualizer = AdvancedVisualizer()
+    timeline_fig = visualizer.create_timeline_visualization(patient_data)
+    
+    if timeline_fig:
+        st.plotly_chart(timeline_fig, use_container_width=True)
+    
+    # Show chronological report summary
+    st.subheader("📋 Chronological Report Summary")
+    
+    for idx, row in patient_data.iterrows():
+        # Format date safely
+        try:
+            date_str = row['Date'].strftime('%Y-%m-%d') if pd.notna(row['Date']) else 'Unknown Date'
+        except:
+            date_str = str(row['Date']) if pd.notna(row['Date']) else 'Unknown Date'
+        
+        report_type = row.get('Report Type', 'Unknown Type')
+        with st.expander(f"{date_str} - {report_type}", expanded=False):
+            col1, col2 = st.columns([1, 3])
+            
+            with col1:
+                st.write("**Test Details**")
+                st.write(f"Type: {row['Report Type']}")
+                if 'Patient Age' in row and pd.notna(row['Patient Age']):
+                    st.write(f"Age: {row['Patient Age']}")
+                if 'Notes' in row and pd.notna(row['Notes']):
+                    st.write(f"Notes: {row['Notes'][:100]}...")
+            
+            with col2:
+                # Show key parameters
+                st.write("**Key Parameters**")
+                
+                # Get parameters with values
+                parameters = []
+                for col in patient_data.columns:
+                    if col not in ['Date', 'Report Type', 'Patient Name', 'Notes', 
+                                  'Patient Age', 'Patient Gender', 'Ultrasound Findings', 
+                                  'Ultrasound Impression']:
+                        if pd.notna(row[col]):
+                            parameters.append((col, row[col]))
+                
+                # Display in grid
+                if parameters:
+                    cols = st.columns(3)
+                    for i, (param, value) in enumerate(parameters[:9]):  # Show first 9
+                        with cols[i % 3]:
+                            # Check status
+                            if param in NORMAL_RANGES:
+                                status, color = Visualizer().check_value_status(param, value)
+                                st.markdown(
+                                    f"<span style='color:{color};font-weight:bold'>{param}:</span> {value}",
+                                    unsafe_allow_html=True
+                                )
+                            else:
+                                st.write(f"{param}: {value}")
+
 # ----------------------------------
 # MAIN APPLICATION UI
 # ----------------------------------
@@ -164,7 +473,8 @@ def main_app():
 
         page = st.radio(
             "Navigation",
-            ["📤 Upload Report", "📊 Dashboard", "📋 All Reports", "👨‍👩‍👧‍👦 Family Profiles", "⚙️ Settings"],
+            ["📤 Upload Report", "📈 Longitudinal Analysis", "⏳ Health Timeline", 
+             "📊 Dashboard", "📋 All Reports", "👨‍👩‍👧‍👦 Family Profiles", "⚙️ Settings"],
             key="navigation"
         )
 
@@ -174,12 +484,17 @@ def main_app():
 
     # IMPORTANT: Correct DataManager usage
     data_manager = DataManager(st.session_state.username)
+    trend_analyzer = TrendAnalyzer(data_manager)
 
     ocr = OCRProcessor()
     visualizer = Visualizer()
 
     if page == "📤 Upload Report":
         upload_page(data_manager, ocr)
+    elif page == "📈 Longitudinal Analysis":
+        longitudinal_analysis_page(data_manager)
+    elif page == "⏳ Health Timeline":
+        health_timeline_page(data_manager)
     elif page == "📊 Dashboard":
         dashboard_page(data_manager, visualizer)
     elif page == "📋 All Reports":

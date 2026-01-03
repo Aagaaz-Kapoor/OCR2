@@ -392,3 +392,226 @@ class Visualizer:
         )
         
         return fig
+
+class AdvancedVisualizer(Visualizer):
+    def __init__(self):
+        super().__init__()
+    
+    def create_comprehensive_trend_dashboard(self, history_data):
+        """Create comprehensive dashboard for multiple parameters"""
+        if history_data.empty:
+            return None
+        
+        fig = go.Figure()
+        
+        # Add line for each parameter
+        for i, param in enumerate(history_data.columns):
+            if param not in ['Date', 'Trend', 'Change', 'Moving_Avg']:
+                fig.add_trace(go.Scatter(
+                    x=history_data['Date'],
+                    y=history_data[param],
+                    mode='lines+markers',
+                    name=param,
+                    line=dict(color=COLOR_PALETTE[i % len(COLOR_PALETTE)], width=3),
+                    marker=dict(size=8),
+                    hovertemplate=f'<b>{param}</b>: %{{y}}<br>Date: %{{x|%Y-%m-%d}}<extra></extra>'
+                ))
+        
+        fig.update_layout(
+            title='Multi-Parameter Trend Analysis',
+            xaxis_title='Date',
+            yaxis_title='Values',
+            hovermode='x unified',
+            height=600,
+            showlegend=True,
+            plot_bgcolor='white'
+        )
+        
+        return fig
+    
+    def create_trend_analysis_card(self, parameter, history, normal_range=None):
+        """Create a summary card for parameter trend"""
+        if history.empty:
+            return None
+        
+        latest = history.iloc[-1]
+        first = history.iloc[0]
+        
+        # Calculate overall trend
+        overall_change = ((latest[parameter] - first[parameter]) / first[parameter] * 100 
+                         if first[parameter] != 0 else 0)
+        
+        # Determine status
+        if normal_range:
+            status, color = self.check_value_status(parameter, latest[parameter])
+        else:
+            status = "No reference"
+            color = "#808080"
+        
+        # Create card HTML/visual
+        card_data = {
+            'parameter': parameter,
+            'latest_value': latest[parameter],
+            'first_value': first[parameter],
+            'change_percent': overall_change,
+            'change_direction': 'up' if overall_change > 0 else 'down',
+            'status': status,
+            'color': color,
+            'data_points': len(history),
+            'time_span_days': (latest['Date'] - first['Date']).days
+        }
+        
+        return card_data
+    
+    def create_parameter_comparison_matrix(self, df, test_type):
+        """Create a matrix comparing multiple parameters across time"""
+        if df.empty:
+            return None
+        
+        # Filter by test type
+        test_data = df[df['Report Type'] == test_type].copy()
+        
+        if test_data.empty:
+            return None
+        
+        # Get numeric parameters
+        numeric_params = []
+        for col in test_data.columns:
+            if col not in ['Date', 'Report Type', 'Patient Name', 'Notes', 
+                          'Patient Age', 'Patient Gender']:
+                # Check if numeric
+                try:
+                    pd.to_numeric(test_data[col], errors='coerce')
+                    numeric_params.append(col)
+                except:
+                    continue
+        
+        # Create heatmap-like matrix
+        fig = go.Figure(data=go.Heatmap(
+            z=test_data[numeric_params].T.values,
+            x=test_data['Date'],
+            y=numeric_params,
+            colorscale='RdYlGn',
+            zmin=test_data[numeric_params].min().min(),
+            zmax=test_data[numeric_params].max().max(),
+            colorbar=dict(title="Value"),
+            hoverongaps=False,
+            hovertemplate='<b>%{y}</b><br>Date: %{x}<br>Value: %{z}<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title=f'{test_type} - Parameter Value Matrix',
+            xaxis_title='Date',
+            yaxis_title='Parameters',
+            height=400,
+            plot_bgcolor='white'
+        )
+        
+        return fig
+    
+    def create_timeline_visualization(self, patient_data):
+        """Create a timeline visualization of medical reports"""
+        if patient_data.empty:
+            return None
+        
+        # Ensure Date is datetime
+        if 'Date' not in patient_data.columns:
+            return None
+        
+        patient_data = patient_data.copy()
+        patient_data['Date'] = pd.to_datetime(patient_data['Date'], errors='coerce')
+        # Remove rows with invalid dates
+        patient_data = patient_data[patient_data['Date'].notna()].copy()
+        if patient_data.empty:
+            return None
+        patient_data = patient_data.sort_values('Date', ascending=True)
+        
+        # Create timeline chart
+        fig = go.Figure()
+        
+        # Get unique report types for color coding
+        report_types = patient_data['Report Type'].unique() if 'Report Type' in patient_data.columns else ['Report']
+        colors = COLOR_PALETTE[:len(report_types)]
+        color_map = {rt: colors[i % len(colors)] for i, rt in enumerate(report_types)}
+        
+        # Track which report types we've already added to legend
+        seen_report_types = set()
+        
+        # Add markers for each report
+        for idx, row in patient_data.iterrows():
+            report_type = row.get('Report Type', 'Report')
+            date = row['Date']
+            
+            if pd.notna(date):
+                # Only show legend for first occurrence of each report type
+                show_legend = report_type not in seen_report_types
+                if show_legend:
+                    seen_report_types.add(report_type)
+                
+                fig.add_trace(go.Scatter(
+                    x=[date],
+                    y=[0],
+                    mode='markers+text',
+                    name=report_type,
+                    marker=dict(
+                        size=15,
+                        color=color_map.get(report_type, COLOR_PALETTE[0]),
+                        symbol='circle',
+                        line=dict(width=2, color='white')
+                    ),
+                    text=[report_type],
+                    textposition='top center',
+                    textfont=dict(size=10),
+                    hovertemplate=(
+                        f'<b>{report_type}</b><br>' +
+                        f'Date: %{{x|%Y-%m-%d}}<br>' +
+                        f'Patient: {row.get("Patient Name", "Unknown")}<br>' +
+                        '<extra></extra>'
+                    ),
+                    showlegend=show_legend
+                ))
+        
+        # Add timeline line
+        if len(patient_data) > 1:
+            dates = patient_data['Date'].dropna()
+            if len(dates) > 1:
+                fig.add_trace(go.Scatter(
+                    x=dates,
+                    y=[0] * len(dates),
+                    mode='lines',
+                    name='Timeline',
+                    line=dict(color='gray', width=2, dash='dash'),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
+        
+        fig.update_layout(
+            title={
+                'text': 'Medical Test Timeline',
+                'font': {'size': 20, 'color': 'black'}
+            },
+            xaxis_title={
+                'text': 'Date',
+                'font': {'size': 14, 'color': 'black'}
+            },
+            yaxis=dict(
+                showgrid=False,
+                zeroline=False,
+                showticklabels=False,
+                range=[-0.5, 0.5]
+            ),
+            height=300,
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            hovermode='closest',
+            xaxis=dict(
+                showgrid=True,
+                gridcolor='lightgray',
+                tickfont=dict(color='black', size=12),
+                title_font=dict(color='black', size=14),
+                tickformat='%Y-%m-%d',
+                type='date'
+            )
+        )
+        
+        return fig
